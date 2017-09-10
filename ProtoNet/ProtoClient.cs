@@ -101,9 +101,9 @@ namespace ProtoNet
         }
 
         private void SendPingResponse() {
-                lock (sendLock) {
-                    socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingResponse));
-                }
+            lock (sendLock) {
+                socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingResponse));
+            }
         }
 
         public void Start() {
@@ -132,15 +132,16 @@ namespace ProtoNet
         }
 
         private void PingTimer_Elapsed(object sender, ElapsedEventArgs e) {
-            pingAttempts++;
-            if(pingAttempts > MaxPingAttempts) {
-                Dispose();
-            }
+            if (pingAttempts++ > MaxPingAttempts)
+                Disconnect();
 
             pingWatch.Restart();
+
             try {
                 SendPingRequest();
-            } catch { Disconnect(); }
+            } catch {
+                Disconnect();
+            }
 
             pingTimer.Interval = PingInterval;
         }
