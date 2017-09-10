@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ProtoNet.Utilities;
+using System;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -8,11 +9,17 @@ namespace ProtoNet
 {
     public class ProtoClient : IDisposable
     {
+        public delegate void EventHandler<TSender, TEventArgs>(TSender sender, TEventArgs eventArgs);
+        public event EventHandler<ProtoClient, ProtoPacket> PacketReceived;
+        public event EventHandler<ProtoClient, EventArgs> Connected;
+        public event EventHandler<ProtoClient, string> Disconnected;
+        public event EventHandler<ProtoClient, double> PingUpdated;
+
         private Socket socket;
         private SocketAsyncEventArgs socketAsyncEvent;
 
-        private int totalBytesReceived, bytesExpected;
-        private int safeBufferSize;
+        private int totalBytesReceived;
+        private int bytesExpected;
         private bool isRunning;
         private bool isReceivingHeader;
 
@@ -21,21 +28,7 @@ namespace ProtoNet
         private int pingAttempts;
 
         private object sendLock = new object();
-
-        public delegate void EventHandler<TSender, TEventArgs>(TSender sender, TEventArgs eventArgs);
-
-        public event EventHandler<ProtoClient, ProtoPacket> PacketReceived;
-        public event EventHandler<ProtoClient, EventArgs> Connected;
-        public event EventHandler<ProtoClient, string> Disconnected;
-        public event EventHandler<ProtoClient, double> PingUpdated;
-
-        public bool IsConnected {
-            get {
-                return !(socket.Poll(1000, SelectMode.SelectRead) && socket.Available == 0);
-            }
-        }
-
-        private double ElapsedPing => ((double)pingWatch.ElapsedTicks / Stopwatch.Frequency) * 1000.0;
+        private double elapsedTime => ((double)pingWatch.ElapsedTicks / Stopwatch.Frequency) * 1000.0;
 
         public double Ping { get; private set; }
         public object Tag { get; set; }
@@ -59,6 +52,12 @@ namespace ProtoNet
         public bool NoDelay {
             get { return socket.NoDelay; }
             set { socket.NoDelay = true; }
+        }
+
+        public bool IsConnected {
+            get {
+                return !(socket.Poll(1000, SelectMode.SelectRead) && socket.Available == 0);
+            }
         }
 
         public IPEndPoint EndPoint => (IPEndPoint)socket.RemoteEndPoint;
@@ -166,28 +165,29 @@ namespace ProtoNet
                                 break;
                             case NetworkConstants.PingResponse:
                                 pingAttempts = 0;
-                                Ping = ElapsedPing;
+                                Ping = elapsedTime;
                                 PingUpdated?.Invoke(this, Ping);
                                 bytesExpected = NetworkConstants.HeaderSize;
                                 break;
                             default:
-                                safeBufferSize = PacketBufferSize;
-                                isReceivingHeader = false;
+                                int safeBufferSize = PacketBufferSize;
 
                                 if (bytesExpected > safeBufferSize)
                                     throw new Exception($"Packet didn't fit into buffer {bytesExpected} > {safeBufferSize}");
-                                else if(bytesExpected < MinimumPacketSize || bytesExpected < NetworkConstants.HeaderSize)
-                                    throw new Exception($"Packet was smaller than allowed {bytesExpected} < {MinimumPacketSize} OR {NetworkConstants.HeaderSize}");
+                                else if(bytesExpected < MinimumPacketSize)
+                                    throw new Exception($"Packet was smaller than allowed {bytesExpected} < {MinimumPacketSize}");
 
                                 if (socketAsyncEvent.Buffer.Length != safeBufferSize)
                                     socketAsyncEvent.SetBuffer(new byte[safeBufferSize], 0, safeBufferSize);
+
+                                isReceivingHeader = false;
                                 break;
                         }
                     } else {
                         PacketReceived?.Invoke(this, new ProtoPacket(socketAsyncEvent.Buffer, bytesExpected));
 
-                        isReceivingHeader = true;
                         bytesExpected = NetworkConstants.HeaderSize;
+                        isReceivingHeader = true;
                     }
                 }
 

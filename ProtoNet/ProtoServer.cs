@@ -10,6 +10,7 @@ namespace ProtoNet
         public event ProtoClient.EventHandler<ProtoClient, ProtoPacket> PacketReceived;
         public event ProtoClient.EventHandler<ProtoClient, EventArgs> ClientConnected;
         public event ProtoClient.EventHandler<ProtoClient, string> ClientDisconnected;
+        public event ProtoClient.EventHandler<ProtoClient, double> ClientPingUpdated;
 
         private Socket socket;
         private SocketAsyncEventArgs socketAsyncArgs;
@@ -29,11 +30,16 @@ namespace ProtoNet
                 ProtoClient ps = new ProtoClient(e.AcceptSocket);
                 ps.Disconnected += Client_Disconnected;
                 ps.PacketReceived += PacketReceived;
+                ps.PingUpdated += Client_PingUpdated;
                 Client_Connected(ps, EventArgs.Empty);
                 ps.Start();
                 e.AcceptSocket = null;
             }
             AcceptAsync();
+        }
+
+        private void Client_PingUpdated(ProtoClient sender, double eventArgs) {
+            ClientPingUpdated?.Invoke(sender, eventArgs);
         }
 
         public void Listen(int port, int backLog) {
@@ -43,7 +49,7 @@ namespace ProtoNet
             AcceptAsync();
         }
 
-        public void Broadcast(byte[] packet, ProtoClient exception) {
+        public void Broadcast(byte[] packet, ProtoClient exception = null) {
             for (int i = 0; i < connectedClients.Count; i++) {
                 try {
                     if(connectedClients[i] != exception) {

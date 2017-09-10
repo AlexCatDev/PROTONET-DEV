@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ProtoNet
+namespace ProtoNet.Utilities
 {
     public static class FastBitConverter
     {

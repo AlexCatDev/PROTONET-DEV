@@ -40,7 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FastBitConverter.cs" />
+    <Compile Include="Utilities\FastBitConverter.cs" />
     <Compile Include="NetworkConstants.cs" />
     <Compile Include="ProtoPacket.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

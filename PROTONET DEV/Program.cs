@@ -30,7 +30,7 @@ namespace PROTONET_DEV
                 Console.Title = $"There is now {server.ConnectedClients.Count} client(s) connected!";
                 sw.Start();
             };
-
+            
 
             server.ClientDisconnected += (s, e) => {
                 Console.WriteLine("Client disconnected :( " + e);
