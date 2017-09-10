@@ -33,6 +33,7 @@ namespace ProtoNet
         public double Ping { get; private set; }
         public object Tag { get; set; }
 
+        private int packetBufferSize = 8192;
         public int PacketBufferSize { get; set; } = 8192;
         public int MaxPingAttempts { get; set; } = 3;
         public int PingInterval { get; set; } = 1000;
