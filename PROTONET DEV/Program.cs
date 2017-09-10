@@ -15,14 +15,13 @@ namespace PROTONET_DEV
     {
         static void Main(string[] args) {
             int size = 1024*112;
-
             Stopwatch sw = new Stopwatch();
             int reads = 0;
             long total = 0;
             int pings = 0;
             ProtoServer server = new ProtoServer();
             server.ClientConnected += (s, e) => {
-                s.BufferSize = size;
+                s.PacketBufferSize = size;
                 s.PingUpdated += (se, ex) => {
                     pings++;
                     Console.WriteLine("Got ping: " + s.Ping);
@@ -39,8 +38,7 @@ namespace PROTONET_DEV
             };
             server.PacketReceived += (s, e) => {
                 reads++;
-                total += e.ActualLength;
-
+                total += e.Length;
                 if (sw.ElapsedMilliseconds >= 1000) {
                     sw.Restart();
                     Console.Title = ($"Packets/s {reads} Mb/s {(total / 1024.0) / 1024.0} Pings/s {pings}");

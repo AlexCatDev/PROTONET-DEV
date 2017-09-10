@@ -7,7 +7,7 @@ namespace ProtoNet
 {
     public class ProtoServer
     {
-        public event ProtoClient.EventHandler<ProtoClient, Packet> PacketReceived;
+        public event ProtoClient.EventHandler<ProtoClient, ProtoPacket> PacketReceived;
         public event ProtoClient.EventHandler<ProtoClient, EventArgs> ClientConnected;
         public event ProtoClient.EventHandler<ProtoClient, string> ClientDisconnected;
 

@@ -1,6 +1,6 @@
 ﻿namespace ProtoNet
 {
-    public static class NetConstants
+    public static class NetworkConstants
     {
         public const int HeaderSize = 4;
         public const int PingRequest = -1337;

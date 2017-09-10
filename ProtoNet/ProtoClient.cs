@@ -8,9 +8,23 @@ namespace ProtoNet
 {
     public class ProtoClient : IDisposable
     {
+        private Socket socket;
+        private SocketAsyncEventArgs socketAsyncEvent;
+
+        private int totalBytesReceived, bytesExpected;
+        private int safeBufferSize;
+        private bool isRunning;
+        private bool isReceivingHeader;
+
+        private Timer pingTimer;
+        private Stopwatch pingWatch;
+        private int pingAttempts;
+
+        private object sendLock = new object();
+
         public delegate void EventHandler<TSender, TEventArgs>(TSender sender, TEventArgs eventArgs);
 
-        public event EventHandler<ProtoClient, Packet> PacketReceived;
+        public event EventHandler<ProtoClient, ProtoPacket> PacketReceived;
         public event EventHandler<ProtoClient, EventArgs> Connected;
         public event EventHandler<ProtoClient, string> Disconnected;
         public event EventHandler<ProtoClient, double> PingUpdated;
@@ -25,9 +39,12 @@ namespace ProtoNet
 
         public double Ping { get; private set; }
         public object Tag { get; set; }
-        public int BufferSize { get; set; }
-        public int MaxPingAttempts { get; set; }
-        public int PingInterval { get; set; }
+
+        public int PacketBufferSize { get; set; } = 8192;
+        public int MaxPingAttempts { get; set; } = 3;
+        public int PingInterval { get; set; } = 1000;
+
+        public int MinimumPacketSize { get; set; } = 4;
 
         public int SocketReceiveBufferSize {
             get { return socket.ReceiveBufferSize; }
@@ -39,29 +56,20 @@ namespace ProtoNet
             set { socket.SendBufferSize = value; }
         }
 
+        public bool NoDelay {
+            get { return socket.NoDelay; }
+            set { socket.NoDelay = true; }
+        }
+
         public IPEndPoint EndPoint => (IPEndPoint)socket.RemoteEndPoint;
         public IPEndPoint LocalEndPoint => (IPEndPoint)socket.LocalEndPoint;
-
-        private Socket socket;
-        private SocketAsyncEventArgs socketAsyncEventArgs;
-
-        private int totalBytesReceived, bytesExpected;
-        private int safeBufferSize;
-        private bool isRunning;
-        private bool isReceivingHeader;
-
-        private Timer pingTimer;
-        private Stopwatch pingWatch;
-        private int pingAttempts;
-
-        private object sendLock = new object();
 
         public ProtoClient(Socket socket) {
             this.socket = socket;
         }
 
         public ProtoClient() {
-            this.socket = new Socket(AddressFamily.InterNetwork,SocketType.Stream, ProtocolType.Tcp);
+            this.socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         }
 
         public void Connect(string host, int port) {
@@ -71,12 +79,9 @@ namespace ProtoNet
         }
 
         public void BufferedSend(byte[] packet) {
-            byte[] data = new byte[packet.Length + NetConstants.HeaderSize];
+            byte[] data = new byte[packet.Length + NetworkConstants.HeaderSize];
             Array.Copy(packet, 0, data, 4, packet.Length);
-            data[0] = (byte)(packet.Length);
-            data[1] = (byte)(packet.Length >> 8);
-            data[2] = (byte)(packet.Length >> 16);
-            data[3] = (byte)(packet.Length >> 24);
+            FastBitConverter.WriteBytes(data, 0, packet.Length);
 
             lock (sendLock) {
                 socket.Send(data);
@@ -84,65 +89,34 @@ namespace ProtoNet
         }
 
         public void Send(byte[] packet) {
-            byte[] data = new byte[4];
-            data[0] = (byte)(packet.Length);
-            data[1] = (byte)(packet.Length >> 8);
-            data[2] = (byte)(packet.Length >> 16);
-            data[3] = (byte)(packet.Length >> 24);
-
             lock (sendLock) {
-                socket.Send(data);
+                socket.Send(FastBitConverter.GetBytes(packet.Length));
                 socket.Send(packet);
             }
         }
 
         private void SendPingRequest() {
-            unchecked {
-                byte[] data = new byte[4];
-                data[0] = (byte)(NetConstants.PingRequest);
-                data[1] = (byte)(NetConstants.PingRequest >> 8);
-                data[2] = (byte)(NetConstants.PingRequest >> 16);
-                data[3] = (byte)(NetConstants.PingRequest >> 24);
-
                 lock (sendLock) {
-                    socket.Send(data);
+                    socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingRequest));
                 }
-            }
         }
 
         private void SendPingResponse() {
-            unchecked {
-                byte[] data = new byte[4];
-                data[0] = (byte)(NetConstants.PingResponse);
-                data[1] = (byte)(NetConstants.PingResponse >> 8);
-                data[2] = (byte)(NetConstants.PingResponse >> 16);
-                data[3] = (byte)(NetConstants.PingResponse >> 24);
-
                 lock (sendLock) {
-                    socket.Send(data);
+                    socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingResponse));
                 }
-            }
         }
 
         public void Start() {
             if (isRunning == false) {
                 isRunning = true;
+                NoDelay = true;
 
-                if (MaxPingAttempts == 0)
-                    MaxPingAttempts = 3;
+                socketAsyncEvent = new SocketAsyncEventArgs();
+                socketAsyncEvent.Completed += AsyncReceiveCompleted;
 
-                if (BufferSize == 0)
-                    BufferSize = 8192;
-
-                if (PingInterval == 0)
-                    PingInterval = 2000;
-
-                socketAsyncEventArgs = new SocketAsyncEventArgs();
-                socketAsyncEventArgs.Completed += AsyncReceiveCompleted;
-
-                socketAsyncEventArgs.SetBuffer(new byte[NetConstants.HeaderSize], 0, NetConstants.HeaderSize);
-                bytesExpected = NetConstants.HeaderSize;
-                socket.NoDelay = true;
+                socketAsyncEvent.SetBuffer(new byte[PacketBufferSize], 0, PacketBufferSize);
+                bytesExpected = NetworkConstants.HeaderSize;
                 isReceivingHeader = true;
 
                 pingTimer = new Timer(PingInterval);
@@ -174,47 +148,46 @@ namespace ProtoNet
 
         private void AsyncReceiveCompleted(object sender, SocketAsyncEventArgs e) {
             try {
-                if (socketAsyncEventArgs.BytesTransferred <= 0)
-                    throw new Exception("Remote host disconnected");
+                if (socketAsyncEvent.BytesTransferred <= 0)
+                    throw new Exception("Disconnected");
 
-                totalBytesReceived += socketAsyncEventArgs.BytesTransferred;
+                totalBytesReceived += socketAsyncEvent.BytesTransferred;
 
                 if (totalBytesReceived == bytesExpected) {
                     totalBytesReceived = 0;
 
                     if (isReceivingHeader) {
-                        bytesExpected = e.Buffer[0] | (e.Buffer[1] << 8) | (e.Buffer[2] << 16) | (e.Buffer[3] << 24);
+                        bytesExpected = FastBitConverter.ToInt32(e.Buffer, 0);
 
                         switch (bytesExpected) {
-                            case NetConstants.PingRequest:
+                            case NetworkConstants.PingRequest:
                                 SendPingResponse();
-                                bytesExpected = NetConstants.HeaderSize;
+                                bytesExpected = NetworkConstants.HeaderSize;
                                 break;
-                            case NetConstants.PingResponse:
+                            case NetworkConstants.PingResponse:
                                 pingAttempts = 0;
                                 Ping = ElapsedPing;
                                 PingUpdated?.Invoke(this, Ping);
-                                bytesExpected = NetConstants.HeaderSize;
+                                bytesExpected = NetworkConstants.HeaderSize;
                                 break;
                             default:
-                                safeBufferSize = BufferSize;
+                                safeBufferSize = PacketBufferSize;
                                 isReceivingHeader = false;
 
                                 if (bytesExpected > safeBufferSize)
                                     throw new Exception($"Packet didn't fit into buffer {bytesExpected} > {safeBufferSize}");
-                                else if (bytesExpected < NetConstants.HeaderSize)
-                                    throw new Exception($"Packet was less than {NetConstants.HeaderSize} bytes");
+                                else if(bytesExpected < MinimumPacketSize || bytesExpected < NetworkConstants.HeaderSize)
+                                    throw new Exception($"Packet was smaller than allowed {bytesExpected} < {MinimumPacketSize} OR {NetworkConstants.HeaderSize}");
 
-                                if (socketAsyncEventArgs.Buffer.Length != safeBufferSize)
-                                    socketAsyncEventArgs.SetBuffer(new byte[safeBufferSize], 0, safeBufferSize);
-
+                                if (socketAsyncEvent.Buffer.Length != safeBufferSize)
+                                    socketAsyncEvent.SetBuffer(new byte[safeBufferSize], 0, safeBufferSize);
                                 break;
                         }
                     } else {
-                        PacketReceived?.Invoke(this, new Packet { Buffer = socketAsyncEventArgs.Buffer, ActualLength = bytesExpected });
+                        PacketReceived?.Invoke(this, new ProtoPacket(socketAsyncEvent.Buffer, bytesExpected));
 
                         isReceivingHeader = true;
-                        bytesExpected = NetConstants.HeaderSize;
+                        bytesExpected = NetworkConstants.HeaderSize;
                     }
                 }
 
@@ -225,8 +198,8 @@ namespace ProtoNet
         }
 
         private void ReceiveAsync() {
-            socketAsyncEventArgs.SetBuffer(totalBytesReceived, bytesExpected - totalBytesReceived);
-            socket.ReceiveAsync(socketAsyncEventArgs);
+            socketAsyncEvent.SetBuffer(totalBytesReceived, bytesExpected - totalBytesReceived);
+            socket.ReceiveAsync(socketAsyncEvent);
         }
 
         public void Disconnect() {
@@ -236,7 +209,7 @@ namespace ProtoNet
         public void Dispose() {
             Disconnect();
             socket.Close();
-            socketAsyncEventArgs.Dispose();
+            socketAsyncEvent.Dispose();
             pingTimer.Dispose();
         }
     }

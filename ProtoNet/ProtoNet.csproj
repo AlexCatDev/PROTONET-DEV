@@ -40,8 +40,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="NetConstants.cs" />
-    <Compile Include="Packet.cs" />
+    <Compile Include="FastBitConverter.cs" />
+    <Compile Include="NetworkConstants.cs" />
+    <Compile Include="ProtoPacket.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ProtoServer.cs" />
     <Compile Include="ProtoClient.cs" />
