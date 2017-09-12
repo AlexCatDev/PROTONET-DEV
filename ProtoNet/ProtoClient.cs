@@ -18,6 +18,7 @@ namespace ProtoNet
         private Socket socket;
         private SocketAsyncEventArgs socketAsyncEvent;
 
+        private int packetBufferSize = 8192;
         private int totalBytesReceived;
         private int bytesExpected;
         private bool isRunning;
@@ -33,9 +34,16 @@ namespace ProtoNet
         public double Ping { get; private set; }
         public object Tag { get; set; }
 
-        private int packetBufferSize = 8192;
-        public int PacketBufferSize { get; set; } = 8192;
-        public int MaxPingAttempts { get; set; } = 3;
+        public int PacketBufferSize {
+            get { return packetBufferSize; }
+            set {
+                if (value >= 4)
+                    packetBufferSize = value;
+                else
+                    throw new InvalidOperationException($"Packet buffer size must not be less than {NetworkConstants.HeaderSize}");
+            }
+        }
+        public int MaximumPingAttempts { get; set; } = 3;
         public int PingInterval { get; set; } = 1000;
 
         public int MinimumPacketSize { get; set; } = 4;
@@ -96,9 +104,9 @@ namespace ProtoNet
         }
 
         private void SendPingRequest() {
-                lock (sendLock) {
-                    socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingRequest));
-                }
+            lock (sendLock) {
+                socket.Send(FastBitConverter.GetBytes(NetworkConstants.PingRequest));
+            }
         }
 
         private void SendPingResponse() {
@@ -133,7 +141,7 @@ namespace ProtoNet
         }
 
         private void PingTimer_Elapsed(object sender, ElapsedEventArgs e) {
-            if (pingAttempts++ > MaxPingAttempts)
+            if (pingAttempts++ > MaximumPingAttempts)
                 Disconnect();
 
             pingWatch.Restart();
