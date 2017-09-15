@@ -141,8 +141,10 @@ namespace ProtoNet
         }
 
         private void PingTimer_Elapsed(object sender, ElapsedEventArgs e) {
-            if (pingAttempts++ > MaximumPingAttempts)
+            if (pingAttempts++ > MaximumPingAttempts) {
                 Disconnect();
+                return;
+            }
 
             pingWatch.Restart();
 

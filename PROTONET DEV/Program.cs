@@ -18,19 +18,18 @@ namespace PROTONET_DEV
             Stopwatch sw = new Stopwatch();
             int reads = 0;
             long total = 0;
-            int pings = 0;
             ProtoServer server = new ProtoServer();
             server.ClientConnected += (s, e) => {
                 s.PacketBufferSize = size;
-                s.PingUpdated += (se, ex) => {
-                    pings++;
-                    Console.WriteLine("Got ping: " + s.Ping);
-                };
+
                 //Console.WriteLine("Client connected!");
                 Console.Title = $"There is now {server.ConnectedClients.Count} client(s) connected!";
                 sw.Start();
             };
-            
+
+            server.ClientPingUpdated += (s, e) => {
+                Console.WriteLine("Got ping: " + s.Ping);
+            };
 
             server.ClientDisconnected += (s, e) => {
                 Console.WriteLine("Client disconnected :( " + e);
@@ -41,10 +40,10 @@ namespace PROTONET_DEV
                 total += e.Length;
                 if (sw.ElapsedMilliseconds >= 1000) {
                     sw.Restart();
-                    Console.Title = ($"Packets/s {reads} Mb/s {(total / 1024.0) / 1024.0} Pings/s {pings}");
+                    double throughPut = Math.Round((total / 1024.0) / 1024.0, 2);
+                    Console.Title = ($"Packet/s {reads} MByte/s {throughPut} MBit/s {throughPut * 8.0}");
                     reads = 0;
                     total = 0;
-                    pings = 0;
                 }
             };
             server.Listen(9090, 10);
