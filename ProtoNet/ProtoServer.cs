@@ -44,7 +44,7 @@ namespace ProtoNet
 
         public void Listen(int port, int backLog) {
             socket.Bind(new IPEndPoint(IPAddress.Any, port));
-            socket.Listen(port);
+            socket.Listen(backLog);
 
             AcceptAsync();
         }

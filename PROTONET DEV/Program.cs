@@ -22,7 +22,7 @@ namespace PROTONET_DEV
             server.ClientConnected += (s, e) => {
                 s.PacketBufferSize = size;
 
-                //Console.WriteLine("Client connected!");
+                Console.WriteLine("Client connected!");
                 Console.Title = $"There is now {server.ConnectedClients.Count} client(s) connected!";
                 sw.Start();
             };
@@ -46,15 +46,9 @@ namespace PROTONET_DEV
                     total = 0;
                 }
             };
-            server.Listen(9090, 10);
+            server.Listen(8899, 10);
+            Console.WriteLine("Listening");
             
-            byte[] bytes = new byte[size];
-
-            ProtoClient c = new ProtoClient();
-            c.Connect("127.0.0.1", 9090);
-            while (true) {
-                c.Send(bytes);
-            }
             Console.ReadLine();
         }
     }

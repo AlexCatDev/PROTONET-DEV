@@ -151,7 +151,7 @@ namespace ProtoNet
             try {
                 SendPingRequest();
             } catch {
-                Disconnect();
+
             }
 
             pingTimer.Interval = PingInterval;
